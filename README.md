@@ -1,4 +1,6 @@
-# geoip_krnic2dbip
+# [geoip_convert_krnic2dbip](https://github.com/elmitash/geoip_convert_krnic2dbip) 의 go 언어판
+
+## 개요
 krnic 에서 제공하는 국가별 IP 리스트를 [xtables](https://sourceforge.net/p/xtables-addons/xtables-addons/ci/master/tree/geoip/)의 빌드 스크립트(xt_geoip_build)에서 사용하기 위해 db-ip.com에서 제공하는 csv 파일 포맷으로 변환한다.  
 변환시 같은 국가의 연속 되는 IP 대역은 통합한다.  
 
@@ -17,7 +19,7 @@ https://db-ip.com/db/format/ip-to-country-lite/csv.html
 `8.8.8.0,8.8.8.255,US`  
   
   
-사용방법  
+## 사용방법  
 1. 아래 두파일을 다운로드해서 같은 디렉토리 위치에 넣는다.  
 bash쉘: [geoip.sh](https://github.com/elmitash/geoip_krnic2dbip/blob/master/geoip.sh)  
 실행파일: [geoip_krnic2dbip](https://github.com/elmitash/geoip_krnic2dbip/blob/master/linux_amd64/geoip_krnic2dbip)  
