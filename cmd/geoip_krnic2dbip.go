@@ -64,7 +64,7 @@ func main() {
 
 	// write file
 	outputFilePath := "dbip-country-lite.csv"
-	fo, err := os.OpenFile(outputFilePath, os.O_WRONLY|os.O_CREATE, 0666)
+	fo, err := os.Create(outputFilePath)
 	if err != nil {
 		panic(err)
 	}
