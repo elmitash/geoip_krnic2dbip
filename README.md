@@ -5,7 +5,7 @@ krnic 에서 제공하는 국가별 IP 리스트를 [xtables](https://sourceforg
 변환시 같은 국가의 연속 되는 IP 대역은 통합한다.  
 
 우분투 22.04 에서 iptables 애드온 xtables 로 국가 별로 접속 차단 허용  
-https://blog.elmi.page/963
+https://blog.elmi.page/963  
 우분투 18.04 에서 iptables 애드온 xtables 로 국가 별로 접속 차단 허용  
 https://blog.elmi.page/417  
 
