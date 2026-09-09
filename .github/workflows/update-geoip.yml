@@ -1,0 +1,103 @@
+name: Update and Release GeoIP Binary Databases
+
+on:
+  schedule:
+    # 매주 월요일 00:00 UTC (09:00 KST) 실행
+    - cron: '0 0 * * 1'
+  workflow_dispatch: # GitHub 웹 UI에서 수동 실행
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build GeoIP Binaries and Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Download latest KRNIC IPv4 CSV
+        run: |
+          echo "Downloading latest IPv4 data from KRNIC..."
+          curl -k -L --retry 3 --retry-delay 5 \
+            "https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/jsp/statboard/IPAS/ovrse/natal/IPaddrBandCurrentDownload.jsp" \
+            -o ipv4.csv
+          ls -lh ipv4.csv
+
+      - name: Build geoip_krnic2dbip CLI
+        run: |
+          go build -v -o geoip_krnic2dbip ./cmd
+
+      - name: Run Unit Tests
+        run: |
+          go test -v ./cmd/...
+
+      - name: Generate Binary Targets and Checksums
+        run: |
+          ./geoip_krnic2dbip -all -in ipv4.csv
+          ls -lh *.dat checksum.sha256
+
+      - name: Verify Checksums
+        run: |
+          sha256sum -c checksum.sha256
+
+      - name: Verify Lookups via CLI
+        run: |
+          echo "Testing Japanese IP (Yahoo Japan)..."
+          ./geoip_krnic2dbip -verify jp.dat -ip 182.22.59.229
+
+          echo "Testing Korean IP (Naver)..."
+          ./geoip_krnic2dbip -verify kr.dat -ip 211.249.220.24
+
+          echo "Testing Global IP (Google DNS)..."
+          ./geoip_krnic2dbip -verify global.dat -ip 8.8.8.8
+
+          echo "Testing China IP (Baidu)..."
+          ./geoip_krnic2dbip -verify cn.dat -ip 220.181.38.148
+
+      - name: Prepare Release Tag and Date
+        id: release_info
+        run: |
+          DATE_TAG=$(date -u +'%Y%m%d')
+          echo "tag_name=v${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
+
+      - name: Create or Update Latest Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest GeoIP Databases (${{ steps.release_info.outputs.release_date }})"
+          body: |
+            ## Automated Weekly GeoIP Database Build
+            - **Build Date:** ${{ steps.release_info.outputs.release_date }}
+            - **Data Source:** [KRNIC (한국인터넷정보센터)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/)
+
+            ### Included Binary Assets (Fixed 10-Byte Big-Endian)
+            - `jp.dat`: Japan IP range database
+            - `kr.dat`: South Korea IP range database
+            - `cn.dat`: China IP range database
+            - `global.dat`: Worldwide IP range database
+            - `checksum.sha256`: SHA-256 integrity verification checksums
+
+            ### Integrity Check
+            Verify your downloaded assets using:
+            ```bash
+            sha256sum -c checksum.sha256
+            ```
+          files: |
+            global.dat
+            jp.dat
+            kr.dat
+            cn.dat
+            checksum.sha256
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

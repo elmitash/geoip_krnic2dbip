@@ -1,0 +1,16 @@
+# Binaries
+geoip_krnic2dbip
+*.exe
+*.test
+
+# Generated Data & Datasets
+*.dat
+*.csv
+checksum.sha256
+
+# OS / Editor files
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
