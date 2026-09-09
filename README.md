@@ -287,7 +287,6 @@ BenchmarkSearchIP-12    2806466    422.5 ns/op
 
 ---
 
-## 10. 데이터 출처 및 라이선스
+## 10. 데이터 출처
 
-- **IP 데이터 출처:** [KRNIC 한국인터넷정보센터 (KISA)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/jsp/statboard/IPAS/ovrse/natal/IPaddrBandCurrentDownload.jsp)
-- **라이선스:** MIT License
+- **데이터 출처:** [KRNIC 한국인터넷정보센터 (KISA)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/jsp/statboard/IPAS/ovrse/natal/IPaddrBandCurrentDownload.jsp)
