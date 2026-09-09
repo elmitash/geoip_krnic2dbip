@@ -441,17 +441,51 @@ func runVerify(datPath, ipStr string) error {
 	return nil
 }
 
+func runLegacyCSV(inputPath, csvOutPath string) error {
+	if csvOutPath == "" {
+		csvOutPath = "dbip-country-lite.csv"
+	}
+	fmt.Printf("[1/2] Reading and decoding KRNIC CSV from: %s\n", inputPath)
+	fi, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("cannot open input file: %w", err)
+	}
+	defer fi.Close()
+
+	records, err := ParseKRNIC(transform.NewReader(fi, korean.EUCKR.NewDecoder()))
+	if err != nil {
+		return fmt.Errorf("failed to parse KRNIC CSV: %w", err)
+	}
+	fmt.Printf("      - Parsed raw records: %d\n", len(records))
+
+	fmt.Printf("[2/2] Sorting, merging contiguous ranges and writing CSV to: %s\n", csvOutPath)
+	merged := SortAndMerge(records)
+	fmt.Printf("      - Merged total records: %d\n", len(merged))
+
+	if err := WriteCSV(csvOutPath, merged); err != nil {
+		return fmt.Errorf("failed to write CSV: %w", err)
+	}
+
+	fiStat, _ := os.Stat(csvOutPath)
+	fmt.Printf("Successfully created %s (%d bytes, %d records)\n", csvOutPath, fiStat.Size(), len(merged))
+	return nil
+}
+
 func printUsage() {
 	fmt.Println("Usage of geoip_krnic2dbip:")
-	fmt.Println("  1. One-pass build for all targets (recommended):")
-	fmt.Println("     ./geoip_krnic2dbip -all [-country JP,KR,CN] [-in ipv4.csv] [-csv dbip-country-lite.csv]")
-	fmt.Println("     Outputs: global.dat, <country>.dat files, checksum.sha256")
+	fmt.Println("  1. Legacy CSV mode (default when run without flags or with -csv):")
+	fmt.Println("     ./geoip_krnic2dbip                             # Converts ipv4.csv -> dbip-country-lite.csv")
+	fmt.Println("     ./geoip_krnic2dbip -csv custom-lite.csv        # Converts to custom CSV file")
 	fmt.Println()
-	fmt.Println("  2. Build binary for specific country or multiple countries (comma-separated):")
+	fmt.Println("  2. One-pass build for binary targets + CSV (recommended):")
+	fmt.Println("     ./geoip_krnic2dbip -all [-country JP,KR,CN] [-in ipv4.csv] [-csv dbip-country-lite.csv]")
+	fmt.Println("     Outputs: global.dat, <country>.dat files, checksum.sha256, dbip-country-lite.csv")
+	fmt.Println()
+	fmt.Println("  3. Build binary for specific country or multiple countries (comma-separated):")
 	fmt.Println("     ./geoip_krnic2dbip -country JP,KR,CN [-in ipv4.csv]")
 	fmt.Println("     ./geoip_krnic2dbip -country US -out us.dat [-in ipv4.csv]")
 	fmt.Println()
-	fmt.Println("  3. Verification mode (binary search query):")
+	fmt.Println("  4. Verification mode (binary search query):")
 	fmt.Println("     ./geoip_krnic2dbip -verify jp.dat -ip 182.22.59.229")
 	fmt.Println()
 	fmt.Println("Flags:")
@@ -460,12 +494,12 @@ func printUsage() {
 
 func main() {
 	var (
-		flagAll       = flag.Bool("all", false, "Build global.dat + specified countries (default: JP,KR,CN) + checksum.sha256")
+		flagAll       = flag.Bool("all", false, "Build global.dat + specified countries (default: JP,KR,CN) + dbip-country-lite.csv + checksum.sha256")
 		flagCountry   = flag.String("country", "", "Filter and build for specific country code(s), comma-separated (e.g. JP,KR,CN or US)")
 		flagCountries = flag.String("countries", "", "Alias for -country")
 		flagOut       = flag.String("out", "", "Output path when building a single country (e.g. jp.dat)")
 		flagIn        = flag.String("in", "ipv4.csv", "Input KRNIC CSV file path (EUC-KR)")
-		flagCsv       = flag.String("csv", "", "Optional output path for DB-IP compatible CSV (e.g. dbip-country-lite.csv)")
+		flagCsv       = flag.String("csv", "", "Output path for DB-IP compatible CSV (default: dbip-country-lite.csv)")
 		flagVerify    = flag.String("verify", "", "Path to .dat file for binary search verification")
 		flagIP        = flag.String("ip", "", "Target IP address to verify in binary search mode")
 		flagHelp      = flag.Bool("help", false, "Show help message")
@@ -474,11 +508,26 @@ func main() {
 	flag.Usage = printUsage
 	flag.Parse()
 
-	if *flagHelp || flag.NFlag() == 0 {
+	if *flagHelp {
 		printUsage()
 		os.Exit(0)
 	}
 
+	// [레거시 호환 모드] 인자 없이 실행 시: 기존처럼 ipv4.csv -> dbip-country-lite.csv 생성
+	if flag.NFlag() == 0 {
+		if _, err := os.Stat(*flagIn); err == nil {
+			fmt.Printf("인자 없이 실행되어 기존 레거시 모드로 동작합니다 (%s -> dbip-country-lite.csv)\n", *flagIn)
+			if err := runLegacyCSV(*flagIn, "dbip-country-lite.csv"); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+		printUsage()
+		os.Exit(0)
+	}
+
+	// 검증 모드
 	if *flagVerify != "" {
 		if *flagIP == "" {
 			fmt.Fprintln(os.Stderr, "Error: -ip <ip_address> is required with -verify")
@@ -499,6 +548,7 @@ func main() {
 		countryInput = *flagCountries
 	}
 
+	// 원패스 전체 빌드 모드 (-all)
 	if *flagAll {
 		if countryInput == "" {
 			countryInput = "JP,KR,CN" // Default targets when -all is specified
@@ -509,13 +559,20 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := runBuild(*flagIn, targetCountries, true, *flagOut, *flagCsv); err != nil {
+		// -all 실행 시 DB-IP CSV 파일도 기본으로 함께 생성
+		csvOut := *flagCsv
+		if csvOut == "" {
+			csvOut = "dbip-country-lite.csv"
+		}
+
+		if err := runBuild(*flagIn, targetCountries, true, *flagOut, csvOut); err != nil {
 			fmt.Fprintf(os.Stderr, "Build error: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
+	// 특정 국가 바이너리 빌드 모드
 	if countryInput != "" {
 		targetCountries, err := ParseCountryList(countryInput)
 		if err != nil {
@@ -529,6 +586,15 @@ func main() {
 
 		if err := runBuild(*flagIn, targetCountries, false, *flagOut, *flagCsv); err != nil {
 			fmt.Fprintf(os.Stderr, "Build error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// 단독 CSV 변환 모드 (-csv 지정 시)
+	if *flagCsv != "" {
+		if err := runLegacyCSV(*flagIn, *flagCsv); err != nil {
+			fmt.Fprintf(os.Stderr, "CSV conversion error: %v\n", err)
 			os.Exit(1)
 		}
 		return

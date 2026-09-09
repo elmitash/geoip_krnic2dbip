@@ -55,21 +55,31 @@ go test -v -bench=. ./cmd/...
 
 ## 4. CLI 사용법
 
-### 1) 원패스 전체 빌드 (기본 추천 모드)
-KRNIC CSV(`ipv4.csv`)를 1회만 파싱하여 `global.dat` 및 지정된 국가별 `.dat` 파일들과 `checksum.sha256`을 일괄 생성합니다.
+### 1) 레거시 CSV 변환 모드 (기존 쉘 스크립트 및 xtables 100% 호환)
+기존 `geoip.sh` 쉘 스크립트 및 `xt_geoip_build` 파이프라인과 완벽히 호환됩니다. 인자 없이 실행하면 현재 디렉터리의 `ipv4.csv`를 읽어 `dbip-country-lite.csv`로 즉시 변환합니다.
 ```bash
-# 기본 모드: global.dat + jp.dat, kr.dat, cn.dat + checksum.sha256 일괄 생성
+# 인자 없이 실행 시 자동으로 dbip-country-lite.csv 생성 (기존과 동일)
+./geoip_krnic2dbip
+
+# 출력 CSV 파일명을 직접 지정할 때
+./geoip_krnic2dbip -csv custom-country-lite.csv
+```
+
+### 2) 원패스 전체 빌드 (신규 바이너리 + CSV 일괄 생성, 권장)
+KRNIC CSV(`ipv4.csv`)를 1회만 파싱하여 `global.dat`, 지정된 국가별 `.dat` 파일들, `checksum.sha256` 및 `dbip-country-lite.csv`를 한 번에 일괄 생성합니다.
+```bash
+# 기본 모드: global.dat + jp.dat, kr.dat, cn.dat + dbip-country-lite.csv + checksum.sha256 생성
 ./geoip_krnic2dbip -all
 
-# 사용자 정의 국가 지정 모드: global.dat + us.dat, gb.dat, de.dat 생성
+# 사용자 정의 국가 지정 모드: global.dat + us.dat, gb.dat, de.dat + dbip-country-lite.csv 생성
 ./geoip_krnic2dbip -all -country US,GB,DE
 ```
 - 옵션:
   - `-country` (또는 `-countries`): 추출할 2자리 국가 코드 (콤마 구분으로 복수 지정 가능, 기본값: `JP,KR,CN`)
   - `-in <파일경로>`: 입력 KRNIC CSV 경로 지정 (기본값: `ipv4.csv`)
-  - `-csv <파일경로>`: 레거시 호환용 DB-IP 포맷 CSV 동시 출력 (e.g. `-csv dbip-country-lite.csv`)
+  - `-csv <파일경로>`: DB-IP 포맷 CSV 출력 경로 지정 (기본값: `dbip-country-lite.csv`)
 
-### 2) 특정 국가 바이너리만 빌드 (단일 / 복수 국가 동적 추출)
+### 3) 특정 국가 바이너리만 빌드 (단일 / 복수 국가 동적 추출)
 파라미터로 국가 코드를 지정하면, 해당 국가 레코드만 별도로 분리하여 추출합니다. 복수 개의 국가도 콤마(`,`)로 구분하여 한 번에 분리할 수 있습니다.
 ```bash
 # 복수 국가를 각각의 .dat 파일로 한 번에 추출 (결과: jp.dat, kr.dat, cn.dat)
