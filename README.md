@@ -139,7 +139,8 @@ python3 verify_suite.py kr.dat KR
 | `jp.dat` | 일본 (JP) | 약 2,500건 | 약 25 KB | 일본 내수용 서비스/EC 사이트 특화 경량 DB |
 | `kr.dat` | 한국 (KR) | 약 900건 | 약 9 KB | 국내 접속 전용 초경량 DB |
 | `cn.dat` | 중국 (CN) | 약 4,100건 | 약 41 KB | 중국 접속 식별 및 제어용 경량 DB |
-| `checksum.sha256` | - | - | 텍스트 | 생성된 모든 `.dat`의 SHA-256 해시값 검증 파일 |
+| `dbip-country-lite.csv` | 전 세계 전체 | 약 142,000건 | 약 4.3 MB | xtables(`xt_geoip_build`) 호환용 DB-IP CSV 파일 |
+| `checksum.sha256` | - | - | 텍스트 | 생성된 모든 파일의 SHA-256 해시값 검증 파일 |
 
 ### 무결성 검증 (Linux / macOS)
 ```bash

@@ -80,11 +80,12 @@ jobs:
             - **Build Date:** ${{ steps.release_info.outputs.release_date }}
             - **Data Source:** [KRNIC (한국인터넷정보센터)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/)
 
-            ### Included Binary Assets (Fixed 10-Byte Big-Endian)
-            - `jp.dat`: Japan IP range database
-            - `kr.dat`: South Korea IP range database
-            - `cn.dat`: China IP range database
-            - `global.dat`: Worldwide IP range database
+            ### Included Assets
+            - `jp.dat`: Japan IP range database (10-byte binary)
+            - `kr.dat`: South Korea IP range database (10-byte binary)
+            - `cn.dat`: China IP range database (10-byte binary)
+            - `global.dat`: Worldwide IP range database (10-byte binary)
+            - `dbip-country-lite.csv`: DB-IP compatible CSV format for xtables-addons
             - `checksum.sha256`: SHA-256 integrity verification checksums
 
             ### Integrity Check
@@ -97,6 +98,7 @@ jobs:
             jp.dat
             kr.dat
             cn.dat
+            dbip-country-lite.csv
             checksum.sha256
           prerelease: false
         env:

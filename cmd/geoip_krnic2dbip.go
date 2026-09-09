@@ -398,22 +398,38 @@ func runBuild(inputPath string, targetCountries []string, buildGlobal bool, sing
 		checksumLines = append(checksumLines, fmt.Sprintf("%s  %s", hash, t.name))
 	}
 
+	if csvOutPath != "" {
+		fmt.Printf("      - Writing DB-IP compatible CSV to: %s ...\n", csvOutPath)
+		fCsv, err := os.Create(csvOutPath)
+		if err != nil {
+			return fmt.Errorf("failed to create csv file: %w", err)
+		}
+		defer fCsv.Close()
+
+		hasher := sha256.New()
+		mw := io.MultiWriter(fCsv, hasher)
+		w := csv.NewWriter(mw)
+		for _, r := range merged {
+			if err := w.Write(r.ToCSV()); err != nil {
+				return fmt.Errorf("failed to write csv row: %w", err)
+			}
+		}
+		w.Flush()
+
+		csvHash := hex.EncodeToString(hasher.Sum(nil))
+		fiStat, _ := os.Stat(csvOutPath)
+		fmt.Printf("      - Created %-15s : %7d records, %8d bytes (SHA256: %s)\n",
+			csvOutPath, len(merged), fiStat.Size(), csvHash[:12]+"...")
+		checksumLines = append(checksumLines, fmt.Sprintf("%s  %s", csvHash, csvOutPath))
+	}
+
 	checksumFile := "checksum.sha256"
 	checksumContent := strings.Join(checksumLines, "\n") + "\n"
 	if err := os.WriteFile(checksumFile, []byte(checksumContent), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", checksumFile, err)
 	}
-	fmt.Printf("      - Created %-15s with SHA256 hashes for all targets.\n", checksumFile)
-
-	if csvOutPath != "" {
-		fmt.Printf("[4/4] Writing DB-IP compatible CSV to: %s\n", csvOutPath)
-		if err := WriteCSV(csvOutPath, merged); err != nil {
-			return err
-		}
-		fmt.Printf("      - CSV file saved successfully.\n")
-	} else {
-		fmt.Println("[4/4] Done! All targets created successfully.")
-	}
+	fmt.Printf("[4/4] Created %-15s with SHA256 hashes for all targets.\n", checksumFile)
+	fmt.Println("All targets created successfully.")
 
 	return nil
 }
