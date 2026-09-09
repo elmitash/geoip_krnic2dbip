@@ -1,114 +1,118 @@
+[ 🇯🇵 **日本語** | 🇰🇷 [한국어](README.ko.md) ]
+
 # KRNIC GeoIP to Binary Database Converter (`geoip_krnic2dbip`)
 
-KRNIC(한국인터넷정보센터)의 국가별 IPv4 할당 현황 데이터를 초고속 조회가 가능한 **고정 10바이트 바이너리 포맷(`.dat`)** 및 DB-IP 호환 포맷으로 변환하고 자동 배포하는 Go 언어 기반 도구입니다.
+KRNIC（韓国インターネット情報センター）が公開している国別IPv4割り当て統計データを、超高速な検索が可能な**固定10バイト・バイナリフォーマット（`.dat`）**およびDB-IP互換フォーマットに変換し、自動配信するGo言語ベースのツールです。
 
-GitHub Actions를 통해 매주 최신 KRNIC 데이터를 자동으로 다운로드하여 빌드하고, 무결성 검증을 거친 후 GitHub Release Assets(`global.dat`, `jp.dat`, `kr.dat`, `cn.dat`, `checksum.sha256`)로 자동 배포됩니다.
-
----
-
-## 1. 주요 특징
-
-- **초고속 이진 탐색(Binary Search):** 고정 10바이트 레코드 구조로 설계되어 별도의 메모리 인덱스 구축 없이 `fseek` 기반 $O(\log N)$ 이진 탐색으로 1회 조회당 **0.0005ms(약 430ns)** 이내에 국가 코드를 식별합니다.
-- **연속 대역 자동 병합(Range Merging):** 동일 국가의 인접/연속된 IP 대역을 자동 병합하여 레코드 수를 45% 이상 압축(약 26만 개 -> 약 14만 개)합니다.
-- **원패스 일괄 빌드(`-all`):** KRNIC CSV를 단 1회만 파싱하여 전 세계(`global.dat`), 일본 특화(`jp.dat`), 한국 특화(`kr.dat`), 중국 특화(`cn.dat`) 및 SHA-256 체크섬(`checksum.sha256`)을 한 번에 생성합니다.
-- **자체 검증(Verification) 모드:** CLI 자체에 이진 탐색 엔진을 내장하여 생성된 바이너리의 IP 조회를 즉시 검증할 수 있습니다.
-- **완전 자동화 파이프라인:** 매주 월요일 00:00 UTC에 GitHub Actions가 최신 데이터를 수집하여 릴리즈를 갱신합니다.
+GitHub Actionsを通じて毎週月曜日に最新のKRNICデータを自動ダウンロード・ビルドし、整合性検証を経てGitHub Release Assets（`global.dat`, `jp.dat`, `kr.dat`, `cn.dat`, `dbip-country-lite.csv`, `checksum.sha256`）として自動配信されます。
 
 ---
 
-## 2. 바이너리 레코드 포맷 규격 (Fixed 10-Byte Big-Endian)
+## 1. 主な特徴
 
-모든 `.dat` 파일은 헤더가 없는 순수 바이너리 스트림으로 구성되며, 1개 레코드는 **정확히 10바이트** 고정 크기를 가집니다.  
-파일 전체 크기는 항상 **10의 정수배**이며, 총 레코드 수는 `파일 크기(bytes) / 10`으로 즉시 계산할 수 있습니다.
+- **超高速二分探索（Binary Search）：** 固定10バイトの固定長レコード構造により、メモリ上に巨大なインデックスを展開することなく、`fseek`による $O(\log N)$ 二分探索で1回の検索あたり**0.0005ms（約420ns）**以内で国コードを特定可能です。
+- **連続IP帯域の自動マージ（Range Merging）：** 同一国の連続・隣接するIP帯域を自動的に結合し、レコード総数を約45%圧縮（約26万件 $\to$ 約14万件）して軽量化します。
+- **ワンパス一括ビルド（`-all`）：** KRNIC CSVを1回走査するだけで、全世界（`global.dat`）、日本特化（`jp.dat`）、韓国特化（`kr.dat`）、中国特化（`cn.dat`）、`dbip-country-lite.csv`、およびSHA-256ハッシュ一覧（`checksum.sha256`）を同時に生成します。
+- **動的な複数国コード抽出：** パラメータ（`-country JP,KR,CN`など）で指定された任意の国コード群を1パスで抽出し、個別のバイナリファイルとして出力します。
+- **既存シェルスクリプトおよびxtablesとの完全互換：** 引数なしで実行した場合、従来の動作（`ipv4.csv` $\to$ `dbip-country-lite.csv`変換）をそのまま維持します。
+- **検証（Verification）モード内蔵：** CLI自体に二分探索検索エンジンを内蔵しており、生成されたバイナリからのIP検索検証を即座に実行できます。
+- **100%自動配信パイプライン：** 毎週月曜日 00:00 UTCにGitHub Actionsが起動し、常に最新のIPデータベースをリリース配信します。
 
-### 레코드 구조
+---
 
-| 오프셋 (Offset) | 필드명 | 데이터 타입 | 바이트 순서 (Endian) | 설명 |
+## 2. バイナリレコード仕様（Fixed 10-Byte Big-Endian）
+
+すべての`.dat`ファイルはヘッダーのない純粋なバイナリストリームであり、1レコードあたり**正確に10バイト**の固定長です。  
+ファイルサイズは常に**10の倍数**であり、総レコード数は `ファイルサイズ(bytes) / 10` で即座に算出できます。
+
+### レコード構造
+
+| オフセット (Offset) | フィールド名 | データ型 | バイト順 (Endian) | 説明 |
 |---|---|---|---|---|
-| `[0 : 4]` | `FirstNum` | `uint32` (4 bytes) | Big-Endian | 대역 시작 IPv4 정수값 |
-| `[4 : 8]` | `LastNum` | `uint32` (4 bytes) | Big-Endian | 대역 종료 IPv4 정수값 |
-| `[8 : 10]` | `CountryCode` | `char[2]` (2 bytes) | ASCII | ISO 3166-1 alpha-2 2자리 국가코드 (`JP`, `KR`, `US` 등) |
+| `[0 : 4]` | `FirstNum` | `uint32` (4 bytes) | Big-Endian | 帯域開始 IPv4 整数値 |
+| `[4 : 8]` | `LastNum` | `uint32` (4 bytes) | Big-Endian | 帯域終了 IPv4 整数値 |
+| `[8 : 10]` | `CountryCode` | `char[2]` (2 bytes) | ASCII | ISO 3166-1 alpha-2 国コード2文字（`JP`, `KR`, `US`等） |
 
-### 정렬 보장
-모든 레코드는 **`FirstNum` 오름차순**으로 완벽히 정렬되어 기록되므로, 파일 임의 접근(Random Access)을 통한 이진 탐색이 즉시 가능합니다.
+### ソート保証
+すべてのレコードは **`FirstNum` の昇順**で完全に整列されて書き込まれるため、ファイルへのランダムアクセスによる二分探索を直接適用できます。
 
 ---
 
-## 3. 설치 및 빌드
+## 3. インストール & ビルド
 
-### 요구 환경
-- Go 1.22 이상
+### 必要環境
+- Go 1.22 以上
 
-### 소스코드 빌드
+### ソースコードからのビルド
 ```bash
 git clone https://github.com/elmitash/geoip_krnic2dbip.git
 cd geoip_krnic2dbip
 go build -o geoip_krnic2dbip ./cmd
 ```
 
-### 테스트 및 벤치마크 실행
+### ユニットテスト & ベンチマーク実行
 ```bash
 go test -v -bench=. ./cmd/...
 ```
 
 ---
 
-## 4. CLI 사용법
+## 4. CLIの使い方
 
-### 1) 레거시 CSV 변환 모드 (기존 쉘 스크립트 및 xtables 100% 호환)
-기존 `geoip.sh` 쉘 스크립트 및 `xt_geoip_build` 파이프라인과 완벽히 호환됩니다. 인자 없이 실행하면 현재 디렉터리의 `ipv4.csv`를 읽어 `dbip-country-lite.csv`로 즉시 변환합니다.
+### 1) 従来互換CSV変換モード（既存シェルおよびxtables互換）
+従来の`geoip.sh`スクリプトおよび`xt_geoip_build`と完全互換です。引数なしで実行するとカレントディレクトリの`ipv4.csv`を読み込み、即座に`dbip-country-lite.csv`を生成します。
 ```bash
-# 인자 없이 실행 시 자동으로 dbip-country-lite.csv 생성 (기존과 동일)
+# 引数なしで実行した場合：自動的に dbip-country-lite.csv を生成（従来通り）
 ./geoip_krnic2dbip
 
-# 출력 CSV 파일명을 직접 지정할 때
+# 出力先CSV名を指定する場合
 ./geoip_krnic2dbip -csv custom-country-lite.csv
 ```
 
-### 2) 원패스 전체 빌드 (신규 바이너리 + CSV 일괄 생성, 권장)
-KRNIC CSV(`ipv4.csv`)를 1회만 파싱하여 `global.dat`, 지정된 국가별 `.dat` 파일들, `checksum.sha256` 및 `dbip-country-lite.csv`를 한 번에 일괄 생성합니다.
+### 2) ワンパス一括ビルド（バイナリ + CSV 同時生成、推奨）
+KRNIC CSV（`ipv4.csv`）を1回パシングし、`global.dat`、指定国バイナリ、`checksum.sha256`、および`dbip-country-lite.csv`を一括生成します。
 ```bash
-# 기본 모드: global.dat + jp.dat, kr.dat, cn.dat + dbip-country-lite.csv + checksum.sha256 생성
+# 基本モード: global.dat + jp.dat, kr.dat, cn.dat + dbip-country-lite.csv + checksum.sha256 生成
 ./geoip_krnic2dbip -all
 
-# 사용자 정의 국가 지정 모드: global.dat + us.dat, gb.dat, de.dat + dbip-country-lite.csv 생성
+# カスタム国指定モード: global.dat + us.dat, gb.dat, de.dat + dbip-country-lite.csv 生成
 ./geoip_krnic2dbip -all -country US,GB,DE
 ```
-- 옵션:
-  - `-country` (또는 `-countries`): 추출할 2자리 국가 코드 (콤마 구분으로 복수 지정 가능, 기본값: `JP,KR,CN`)
-  - `-in <파일경로>`: 입력 KRNIC CSV 경로 지정 (기본값: `ipv4.csv`)
-  - `-csv <파일경로>`: DB-IP 포맷 CSV 출력 경로 지정 (기본값: `dbip-country-lite.csv`)
+- オプション:
+  - `-country`（または `-countries`）：抽出対象の国コード2文字（カンマ区切りで複数指定可能、デフォルト：`JP,KR,CN`）
+  - `-in <パス>`：入力KRNIC CSVのファイルパス（デフォルト：`ipv4.csv`）
+  - `-csv <パス>`：DB-IP互換CSVの出力先パス（デフォルト：`dbip-country-lite.csv`）
 
-### 3) 특정 국가 바이너리만 빌드 (단일 / 복수 국가 동적 추출)
-파라미터로 국가 코드를 지정하면, 해당 국가 레코드만 별도로 분리하여 추출합니다. 복수 개의 국가도 콤마(`,`)로 구분하여 한 번에 분리할 수 있습니다.
+### 3) 特定の国コードのみ抽出ビルド（複数国の一括分割抽出）
+パラメータで国コードを指定すると、該当する国のレコードのみを個別のバイナリファイルとして抽出します。
 ```bash
-# 복수 국가를 각각의 .dat 파일로 한 번에 추출 (결과: jp.dat, kr.dat, cn.dat)
+# 複数国を個別の .dat ファイルとして一括抽出（結果: jp.dat, kr.dat, cn.dat）
 ./geoip_krnic2dbip -country JP,KR,CN
 
-# 서구권 국가들만 각각 추출 (결과: us.dat, gb.dat, de.dat, fr.dat)
+# 欧米諸国のみを個別に抽出（結果: us.dat, gb.dat, de.dat, fr.dat）
 ./geoip_krnic2dbip -country US,GB,DE,FR
 
-# 단일 국가 지정 및 출력 파일명 커스텀 지정
+# 単一国指定 & 出力ファイル名のカスタム指定
 ./geoip_krnic2dbip -country JP -out custom_japan.dat
 ```
 
-### 3) 바이너리 데이터 검증 모드 (Verification)
-생성된 `.dat` 파일에서 임의의 IP를 이진 탐색으로 조회하여 일치 여부와 소요 시간을 확인합니다.
+### 4) バイナリ検索・検証モード（Verification）
+生成された`.dat`ファイルに対し、任意のIPアドレスを二分探索で検索し、所属国と検索時間を即座に検証します。
 ```bash
-# 일본 Yahoo IP 검증 -> JP 매칭 확인
+# Yahoo Japan IP の検証 -> JP に一致
 ./geoip_krnic2dbip -verify jp.dat -ip 182.22.59.229
 
-# 한국 포털 Naver IP 검증 -> KR 매칭 확인
+# 韓国 Naver IP の検証 -> KR に一致
 ./geoip_krnic2dbip -verify kr.dat -ip 211.249.220.24
 
-# 중국 검색 Baidu IP 검증 -> CN 매칭 확인
+# 中国 Baidu IP の検証 -> CN に一致
 ./geoip_krnic2dbip -verify cn.dat -ip 220.181.38.148
 
-# Google Public DNS 검증 -> US 매칭 확인
+# Google Public DNS の検証 -> US に一致
 ./geoip_krnic2dbip -verify global.dat -ip 8.8.8.8
 ```
 
-#### 검증 출력 예시:
+#### 検証出力例：
 ```text
 Verifying IP 182.22.59.229 in binary file: jp.dat ...
 Result: MATCH FOUND!
@@ -118,42 +122,42 @@ Result: MATCH FOUND!
   - Lookup Time: 31.72µs
 ```
 
-### 4) 실데이터 대량 검증 스위트 (`verify_suite.py`)
-OECD 10개국(한국, 일본, 미국, 영국, 독일, 프랑스, 호주, 캐나다, 이탈리아, 스페인 각 10개) 및 대륙별 소국 10개국(모나코, 리히텐슈타인, 아이슬란드, 브루나이, 부탄, 몰디브, 세이셸, 모리셔스, 벨리즈, 피지) 총 130개 실제 공공/포털/언론사 IP를 원클릭으로 일괄 검증합니다.
+### 5) 実データ一括検証スイート（`verify_suite.py`）
+OECD加盟10カ国（日本、韓国、米国、英国、ドイツ、フランス、豪州、カナダ、イタリア、スペイン各10件）および各大陸の小規模国家10カ国（モナコ、リヒテンシュタイン、アイスランド、ブルネイ、ブータン、モルディブ、セーシェル、モーリシャス、ベリーズ、フィジー）の**計130件**の実在IPアドレスを一括検証します。
 ```bash
-# 전체 130개 IP 일괄 검증 (global.dat)
+# 全130件のIPを一括検証 (global.dat)
 python3 verify_suite.py global.dat
 
-# 특정 국가만 검증 (예: jp.dat에 대해 일본 사이트 10개만 검증)
+# 特定の国ファイルのみを検証 (例: jp.dat に対して日本のサイト10件のみ検証)
 python3 verify_suite.py jp.dat JP
 python3 verify_suite.py kr.dat KR
 ```
 
 ---
 
-## 5. 생성 에셋 및 파일 설명
+## 5. 生成アセット & ファイル一覧
 
-| 파일명 | 대상 국가 | 예상 레코드 수 | 예상 파일 크기 | 용도 및 특징 |
+| ファイル名 | 対象地域 | 想定レコード数 | 想定ファイル容量 | 主な用途・特徴 |
 |---|---|---|---|---|
-| `global.dat` | 전 세계 전체 | 약 142,000건 | 약 1.4 MB | 글로벌 IP 판별 및 지리적 접근 제어 |
-| `jp.dat` | 일본 (JP) | 약 2,500건 | 약 25 KB | 일본 내수용 서비스/EC 사이트 특화 경량 DB |
-| `kr.dat` | 한국 (KR) | 약 900건 | 약 9 KB | 국내 접속 전용 초경량 DB |
-| `cn.dat` | 중국 (CN) | 약 4,100건 | 약 41 KB | 중국 접속 식별 및 제어용 경량 DB |
-| `dbip-country-lite.csv` | 전 세계 전체 | 약 142,000건 | 약 4.3 MB | xtables(`xt_geoip_build`) 호환용 DB-IP CSV 파일 |
-| `checksum.sha256` | - | - | 텍스트 | 생성된 모든 파일의 SHA-256 해시값 검증 파일 |
+| `global.dat` | 全世界 | 約 142,000件 | 約 1.4 MB | 全世界IP判定および地理的アクセス制御 |
+| `jp.dat` | 日本（JP） | 約 2,500件 | 約 25 KB | **日本国内専用サービス・ECサイト向け超軽量DB** |
+| `kr.dat` | 韓国（KR） | 約 900件 | 約 9 KB | 韓国国内アクセス制御用超軽量DB |
+| `cn.dat` | 中国（CN） | 約 4,100件 | 約 41 KB | 中国アクセス識別・制御用軽量DB |
+| `dbip-country-lite.csv` | 全世界 | 約 142,000件 | 約 4.3 MB | xtables（`xt_geoip_build`）互換DB-IP CSV |
+| `checksum.sha256` | - | - | テキスト | 全生成ファイルのSHA-256ハッシュ一覧 |
 
-### 무결성 검증 (Linux / macOS)
+### チェックサム検証（Linux / macOS）
 ```bash
 sha256sum -c checksum.sha256
 ```
 
 ---
 
-## 6. 클라이언트 구현 가이드 (이진 탐색 알고리즘)
+## 6. クライアント実装ガイド（二分探索アルゴリズム）
 
-고정 10바이트 구조이므로 모든 프로그래밍 언어에서 메모리 부담 없이 디스크 파일 스트림 또는 mmap으로 쉽게 조회할 수 있습니다.
+固定10バイト構造のため、メモリ消費を最小限に抑えつつ、ディスクファイルからのストリーム読み込みやmmapにより任意のプログラミング言語で高速検索が可能です。
 
-### 의사 코드 (Pseudocode)
+### 擬似コード（Pseudocode）
 ```text
 function lookup(ip_str, file_path):
     target_int = ip_to_uint32_be(ip_str)
@@ -177,20 +181,24 @@ function lookup(ip_str, file_path):
         elif target_int > end_ip:
             low = mid + 1
         else:
-            return country  // 일치하는 국가 반환
+            return country  // 一致した国コードを返却
             
-    return null  // 미일치
+    return null  // 一致なし
 ```
 
-### PHP 구현 예시 (EC-CUBE / Symfony 환경)
+### PHP実装例（EC-CUBE 4.3 / Symfony / PHP 8.2+ 環境）
 ```php
 function lookupCountry(string $datPath, string $ip): ?string {
     $ipLong = ip2long($ip);
-    if ($ipLong === false) return null;
-    $target = (float)sprintf('%u', $ipLong); // unsigned 32-bit float/int
+    if ($ipLong === false) {
+        return null;
+    }
+    $target = (float)sprintf('%u', $ipLong); // unsigned 32-bit float
 
     $fp = fopen($datPath, 'rb');
-    if (!$fp) return null;
+    if (!$fp) {
+        return null;
+    }
 
     $fileSize = filesize($datPath);
     $low = 0;
@@ -200,7 +208,9 @@ function lookupCountry(string $datPath, string $ip): ?string {
         $mid = intdiv($low + $high, 2);
         fseek($fp, $mid * 10);
         $data = fread($fp, 10);
-        if (strlen($data) < 10) break;
+        if (strlen($data) < 10) {
+            break;
+        }
 
         $unpacked = unpack('Nstart/Nend/A2cc', $data);
         $start = (float)sprintf('%u', $unpacked['start']);
@@ -223,81 +233,81 @@ function lookupCountry(string $datPath, string $ip): ?string {
 
 ---
 
-## 7. GitHub Actions 자동 배포 파이프라인
+## 7. GitHub Actions 自動配信パイプライン
 
-`.github/workflows/update-geoip.yml`에 자동화 파이프라인이 구축되어 있습니다.
+`.github/workflows/update-geoip.yml` にて自動化パイプラインが構築されています。
 
 ```mermaid
 graph TD
-    A[매주 월요일 00:00 UTC 스케줄 / 수동 실행] --> B[KRNIC 공식 최신 ipv4.csv 다운로드]
-    B --> C[Go 프로그램 빌드 및 단위 테스트 실행]
-    C --> D[geoip_krnic2dbip -all 실행]
-    D --> E[global.dat / jp.dat / kr.dat / cn.dat 생성]
-    E --> F[sha256sum 무결성 검증 및 IP CLI 검증]
-    F --> G[GitHub Releases latest 태그에 에셋 자동 게시]
+    A[毎週月曜日 00:00 UTC スケジュール / 手動実行] --> B[KRNIC 公式最新 ipv4.csv ダウンロード]
+    B --> C[Go プログラムビルド & ユニットテスト実行]
+    C --> D[geoip_krnic2dbip -all 実行]
+    D --> E[global.dat / jp.dat / kr.dat / cn.dat / CSV 生成]
+    E --> F[sha256sum 整合性検証 & IP CLI 自動検証]
+    F --> G[GitHub Releases latest タグへ自動公開]
 ```
 
-- **트리거:**
-  - `cron: '0 0 * * 1'` (매주 월요일 00:00 UTC / 09:00 KST)
-  - `workflow_dispatch` (GitHub 웹 Actions 탭에서 수동 실행 가능)
-- **배포 위치:** GitHub Repository `Releases` -> `latest` 태그
+- **トリガー：**
+  - `cron: '0 0 * * 1'`（毎週月曜日 00:00 UTC / 日本時間 09:00）
+  - `workflow_dispatch`（GitHub Actions Webコンソールからの手動実行）
+- **公開先：** GitHub リポジトリ `Releases` $\to$ `latest` タグ
 
 ---
 
-## 8. 성능 측정 결과 (Benchmark)
+## 8. 性能測定結果（Benchmark）
 
-100,000건의 연속 대역을 모의 생성하여 1회 탐색당 소요 시간을 측정한 결과입니다. (AMD Ryzen 5 5600 환경)
+100,000件の連続IP帯域を模擬生成し、1検索あたりの所要時間を計測した結果です。（AMD Ryzen 5 5600 環境）
 
 ```text
 BenchmarkSearchIP-12    2806466    422.5 ns/op
 ```
-- **1회 조회 소요 시간:** `422.5 ns` (`0.000422 ms`)
-- **초당 처리량(Throughput):** 초당 약 2,360,000회 조회 가능
-- 웹 서버 요청 수명 주기(Request Lifecycle) 내에서 지연 시간(Latency)에 실질적인 영향을 주지 않는 초고속 성능을 제공합니다.
+- **1検索あたりの所要時間：** `422.5 ns`（`0.000422 ms`）
+- **秒間スループット（Throughput）：** 毎秒 約 2,360,000 回 検索可能
+- Webサーバーのリクエストライフサイクル（Request Lifecycle）内でレイテンシに一切影響を与えない超高速性能を提供します。
 
 ---
 
-## 9. 실데이터 검증 사양 및 결과 (Verification Dataset & Results)
+## 9. 実データ検証仕様と結果（Verification Dataset & Results）
 
-`global.dat` 및 국가별 `.dat` 바이너리 데이터베이스의 무결성을 검증하기 위해, **OECD 주요 10개국(각 10개 사이트 = 100개)** 및 **대륙별 소국 10개국(각 2~3개 사이트 = 30개)** 의 실제 정부, 공공기관, 대학교, 대표 포털 IP 총 **130개**를 대상으로 검증 스위트(`verify_suite.py`)를 실행한 결과입니다.
+`global.dat` および国別バイナリデータベースの正確性を検証するため、**OECD主要10カ国（各10件＝計100件）**および**各大陸の小規模国家10カ国（計30件）**の実在する政府・公共機関・大学・ポータルのIPアドレス計**130件**を対象に検証スイート（`verify_suite.py`）を実行した結果です。
 
-### 1) OECD 주요 10개국 (100개 사이트/IP)
+### 1) OECD主要10カ国（100件）
 
-| 국가 (코드) | 대표 사이트 / 기관 (도메인) | 대상 IPv4 | 사이트 성격 / 설명 | 검증 결과 |
+| 国名（コード） | 代表サイト・機関（ドメイン） | 対象 IPv4 | サイト概要・説明 | 検証結果 |
 |:---:|---|---|---|:---:|
-| **대한민국 (KR)** | `gov.kr`<br>`seoul.go.kr`<br>`naver.com`<br>`daum.net`<br>`snu.ac.kr`<br>`korea.kr`<br>`police.go.kr`<br>`mofa.go.kr`<br>`visitkorea.or.kr`<br>`busan.go.kr` | `125.60.35.230`<br>`115.84.166.115`<br>`223.130.200.219`<br>`121.53.105.193`<br>`147.46.10.129`<br>`27.101.217.76`<br>`116.67.83.27`<br>`116.67.79.26`<br>`175.122.1.106`<br>`210.103.81.224` | 정부24 공식 포털<br>서울특별시청<br>네이버 대표 포털<br>다음/카카오 포털<br>서울대학교<br>대한민국 정책브리핑<br>경찰청<br>외교부<br>한국관광공사 포털<br>부산광역시청 | **PASS (10/10)** |
-| **일본 (JP)** | `yahoo.co.jp`<br>`rakuten.co.jp`<br>`www.u-tokyo.ac.jp`<br>`kyoto-u.ac.jp`<br>`www.osaka-u.ac.jp`<br>`tohoku.ac.jp`<br>`www.pref.osaka.lg.jp`<br>`city.yokohama.lg.jp`<br>`iij.ad.jp`<br>`sakura.ne.jp` | `124.83.190.252`<br>`133.237.182.225`<br>`210.152.243.234`<br>`130.54.130.14`<br>`133.1.138.13`<br>`130.34.11.111`<br>`210.149.92.76`<br>`202.32.8.152`<br>`202.232.2.191`<br>`163.43.179.80` | 야후 재팬 대표 포털<br>라쿠텐 이커머스<br>도쿄대학교<br>교토대학교<br>오사카대학교<br>도호쿠대학교<br>오사카부청<br>요코하마시청<br>IIJ 대표 통신/ISP<br>사쿠라 인터넷 IDC | **PASS (10/10)** |
-| **미국 (US)** | `whitehouse.gov`<br>`nasa.gov`<br>`loc.gov`<br>`harvard.edu`<br>`mit.edu`<br>`stanford.edu`<br>`cdc.gov`<br>`irs.gov`<br>`senate.gov`<br>`house.gov` | `192.0.66.51`<br>`192.0.66.108`<br>`104.17.6.58`<br>`192.0.66.20`<br>`23.35.126.95`<br>`171.67.215.200`<br>`23.53.3.141`<br>`152.216.11.110`<br>`23.35.114.182`<br>`15.197.146.213` | 백악관 공식 포털<br>NASA 항공우주국<br>미국 의회도서관<br>하버드 대학교<br>MIT 공과대학교<br>스탠퍼드 대학교<br>질병통제예방센터 CDC<br>국세청 IRS<br>미국 연방상원<br>미국 연방하원 | **PASS (10/10)** |
-| **영국 (GB)** | `ucl.ac.uk`<br>`ed.ac.uk`<br>`imperial.ac.uk`<br>`kcl.ac.uk`<br>`warwick.ac.uk`<br>`bristol.ac.uk`<br>`southampton.ac.uk`<br>`birmingham.ac.uk`<br>`www.sheffield.ac.uk`<br>`st-andrews.ac.uk` | `144.82.250.24`<br>`129.215.97.20`<br>`146.179.12.148`<br>`137.73.130.135`<br>`137.205.28.41`<br>`137.222.180.160`<br>`152.78.118.52`<br>`147.188.217.187`<br>`143.167.2.102`<br>`138.251.7.84` | UCL 대학교<br>에든버러 대학교<br>임페리얼 칼리지 런던<br>킹스 칼리지 런던<br>워릭 대학교<br>브리스톨 대학교<br>사우샘프턴 대학교<br>버밍엄 대학교<br>셰필드 대학교<br>세인트 앤드루스 대학교 | **PASS (10/10)** |
-| **독일 (DE)** | `bundestag.de`<br>`bundeskanzler.de`<br>`lmu.de`<br>`hu-berlin.de`<br>`tum.de`<br>`uni-heidelberg.de`<br>`uni-koeln.de`<br>`uni-frankfurt.de`<br>`kit.edu`<br>`rwth-aachen.de` | `46.243.122.48`<br>`185.173.230.39`<br>`141.84.44.56`<br>`141.20.4.180`<br>`129.187.254.228`<br>`129.206.13.71`<br>`134.95.81.52`<br>`141.2.37.198`<br>`141.3.128.6`<br>`137.226.107.60` | 독일 연방의회<br>독일 연방총리실<br>뮌헨 대학교 (LMU)<br>베를린 훔볼트 대학교<br>뮌헨 공과대학교 (TUM)<br>하이델베르크 대학교<br>쾰른 대학교<br>프랑크푸르트 대학교<br>칼스루에 공대 (KIT)<br>아헨 공과대학교 (RWTH) | **PASS (10/10)** |
-| **프랑스 (FR)** | `gouvernement.fr`<br>`elysee.fr`<br>`www.assemblee-nationale.fr`<br>`senat.fr`<br>`ens.psl.eu`<br>`polytechnique.edu`<br>`univ-paris1.fr`<br>`strasbourg.eu`<br>`bordeaux.fr`<br>`univ-lyon1.fr` | `217.70.184.55`<br>`185.194.81.29`<br>`46.105.202.26`<br>`45.85.52.26`<br>`129.199.166.211`<br>`129.104.30.29`<br>`193.55.96.23`<br>`185.60.150.88`<br>`195.214.227.180`<br>`134.214.126.72` | 프랑스 정부 공식 포털<br>엘리제궁 대통령실<br>프랑스 국민의회 (하원)<br>프랑스 상원<br>파리 고등사범학교 (ENS)<br>에콜 폴리테크니크<br>판테온 소르본 대학교<br>스트라스부르 시청<br>보르도 시청<br>클로드 베르나르 리옹1대학교 | **PASS (10/10)** |
-| **호주 (AU)** | `anu.edu.au`<br>`unimelb.edu.au`<br>`uq.edu.au`<br>`monash.edu`<br>`vic.gov.au`<br>`tas.gov.au`<br>`aarnet.edu.au`<br>`telstra.com.au`<br>`qut.edu.au`<br>`deakin.edu.au` | `130.56.67.33`<br>`43.245.41.62`<br>`130.102.184.3`<br>`43.245.41.240`<br>`103.107.226.226`<br>`147.109.249.170`<br>`202.158.207.3`<br>`203.44.22.2`<br>`131.181.196.203`<br>`128.184.204.21` | 호주 국립대학교 (ANU)<br>멜버른 대학교<br>퀸즐랜드 대학교 (UQ)<br>모나시 대학교<br>빅토리아 주정부 포털<br>태즈메이니아 주정부<br>호주 국가연구망 AARNet<br>텔스트라 대표 통신사<br>퀸즐랜드 공대 (QUT)<br>디킨 대학교 | **PASS (10/10)** |
-| **캐나다 (CA)** | `mcgill.ca`<br>`umontreal.ca`<br>`ucalgary.ca`<br>`uottawa.ca`<br>`westernu.ca`<br>`sfu.ca`<br>`uvic.ca`<br>`dal.ca`<br>`umanitoba.ca`<br>`yorku.ca` | `132.216.98.121`<br>`132.204.8.144`<br>`136.159.96.125`<br>`137.122.9.76`<br>`129.100.0.55`<br>`142.58.103.107`<br>`142.104.197.120`<br>`129.173.31.187`<br>`130.179.16.50`<br>`130.63.236.137` | 맥길 대학교<br>몬트리올 대학교<br>캘거리 대학교<br>오타와 대학교<br>웨스턴 대학교<br>사이먼 프레이저 대학교<br>빅토리아 대학교<br>댈하우지 대학교<br>매니토바 대학교<br>요크 대학교 | **PASS (10/10)** |
-| **이탈리아 (IT)** | `camera.it`<br>`unibo.it`<br>`unimi.it`<br>`unipd.it`<br>`www.unina.it`<br>`unifi.it`<br>`polimi.it`<br>`www.polito.it`<br>`garr.it`<br>`comune.torino.it` | `80.64.114.73`<br>`137.204.24.207`<br>`159.149.53.140`<br>`147.162.235.155`<br>`143.225.161.30`<br>`150.217.3.39`<br>`131.175.187.72`<br>`130.192.182.100`<br>`193.206.158.22`<br>`84.240.178.132` | 이탈리아 하원의회<br>볼로냐 대학교<br>밀라노 대학교<br>파도바 대학교<br>나폴리 페데리코 2세 대학교<br>피렌체 대학교<br>밀라노 공과대학교<br>토리노 공과대학교<br>이탈리아 연구망 GARR<br>토리노 시청 | **PASS (10/10)** |
-| **스페인 (ES)** | `lamoncloa.gob.es`<br>`congreso.es`<br>`ub.edu`<br>`ucm.es`<br>`uab.cat`<br>`uam.es`<br>`upm.es`<br>`www.uv.es`<br>`upv.es`<br>`rediris.es` | `212.128.109.1`<br>`193.145.227.245`<br>`161.116.109.141`<br>`147.96.2.159`<br>`158.109.121.133`<br>`150.244.214.237`<br>`138.100.200.6`<br>`147.156.200.249`<br>`158.42.4.23`<br>`130.206.13.20` | 스페인 총리실 (라 몽클로아)<br>스페인 하원의회<br>바르셀로나 대학교<br>마드리드 콤플루텐세 대학교<br>바르셀로나 자치대학교<br>마드리드 자치대학교<br>마드리드 공과대학교<br>발렌시아 대학교<br>발렌시아 공과대학교<br>스페인 학술연구망 RedIRIS | **PASS (10/10)** |
+| **日本 (JP)** | `yahoo.co.jp`<br>`rakuten.co.jp`<br>`www.u-tokyo.ac.jp`<br>`kyoto-u.ac.jp`<br>`www.osaka-u.ac.jp`<br>`tohoku.ac.jp`<br>`www.pref.osaka.lg.jp`<br>`city.yokohama.lg.jp`<br>`iij.ad.jp`<br>`sakura.ne.jp` | `124.83.190.252`<br>`133.237.182.225`<br>`210.152.243.234`<br>`130.54.130.14`<br>`133.1.138.13`<br>`130.34.11.111`<br>`210.149.92.76`<br>`202.32.8.152`<br>`202.232.2.191`<br>`163.43.179.80` | Yahoo! JAPAN ポータル<br>楽天 総合EC<br>東京大学<br>京都大学<br>大阪大学<br>東北大学<br>大阪府庁<br>横浜市役所<br>IIJ（主要ISP）<br>さくらインターネット（主要IDC） | **PASS (10/10)** |
+| **韓国 (KR)** | `gov.kr`<br>`seoul.go.kr`<br>`naver.com`<br>`daum.net`<br>`snu.ac.kr`<br>`korea.kr`<br>`police.go.kr`<br>`mofa.go.kr`<br>`visitkorea.or.kr`<br>`busan.go.kr` | `125.60.35.230`<br>`115.84.166.115`<br>`223.130.200.219`<br>`121.53.105.193`<br>`147.46.10.129`<br>`27.101.217.76`<br>`116.67.83.27`<br>`116.67.79.26`<br>`175.122.1.106`<br>`210.103.81.224` | 政府24 公式ポータル<br>ソウル特別市庁<br>NAVER ポータル<br>Daum/Kakao ポータル<br>ソウル大学校<br>大韓民国 政策ブリーフィング<br>警察庁<br>外交部<br>韓国観光公社 ポータル<br>釜山廣域市庁 | **PASS (10/10)** |
+| **米国 (US)** | `whitehouse.gov`<br>`nasa.gov`<br>`loc.gov`<br>`harvard.edu`<br>`mit.edu`<br>`stanford.edu`<br>`cdc.gov`<br>`irs.gov`<br>`senate.gov`<br>`house.gov` | `192.0.66.51`<br>`192.0.66.108`<br>`104.17.6.58`<br>`192.0.66.20`<br>`23.35.126.95`<br>`171.67.215.200`<br>`23.53.3.141`<br>`152.216.11.110`<br>`23.35.114.182`<br>`15.197.146.213` | ホワイトハウス 公式<br>NASA 航空宇宙局<br>米国議会図書館<br>ハーバード大学<br>マサチューセッツ工科大学<br>スタンフォード大学<br>CDC（疾病対策センター）<br>IRS（内国歳入庁）<br>米国上院<br>米国下院 | **PASS (10/10)** |
+| **英国 (GB)** | `ucl.ac.uk`<br>`ed.ac.uk`<br>`imperial.ac.uk`<br>`kcl.ac.uk`<br>`warwick.ac.uk`<br>`bristol.ac.uk`<br>`southampton.ac.uk`<br>`birmingham.ac.uk`<br>`www.sheffield.ac.uk`<br>`st-andrews.ac.uk` | `144.82.250.24`<br>`129.215.97.20`<br>`146.179.12.148`<br>`137.73.130.135`<br>`137.205.28.41`<br>`137.222.180.160`<br>`152.78.118.52`<br>`147.188.217.187`<br>`143.167.2.102`<br>`138.251.7.84` | ユニバーシティ・カレッジ・ロンドン<br>エディンバラ大学<br>インペリアル・カレッジ・ロンドン<br>キングス・カレッジ・ロンドン<br>ウォリック大学<br>ブリストル大学<br>サウサンプトン大学<br>バーミンガム大学<br>シェフィールド大学<br>セント・アンドルーズ大学 | **PASS (10/10)** |
+| **ドイツ (DE)** | `bundestag.de`<br>`bundeskanzler.de`<br>`lmu.de`<br>`hu-berlin.de`<br>`tum.de`<br>`uni-heidelberg.de`<br>`uni-koeln.de`<br>`uni-frankfurt.de`<br>`kit.edu`<br>`rwth-aachen.de` | `46.243.122.48`<br>`185.173.230.39`<br>`141.84.44.56`<br>`141.20.4.180`<br>`129.187.254.228`<br>`129.206.13.71`<br>`134.95.81.52`<br>`141.2.37.198`<br>`141.3.128.6`<br>`137.226.107.60` | ドイツ連邦議会<br>ドイツ連邦首相府<br>ミュンヘン大学（LMU）<br>ベルリン・フンボルト大学<br>ミュンヘン工科大学（TUM）<br>ハイデルベルク大学<br>ケルン大学<br>フランクフルト大学<br>カールスルーエ工科大学（KIT）<br>アーヘン工科大学（RWTH） | **PASS (10/10)** |
+| **フランス (FR)** | `gouvernement.fr`<br>`elysee.fr`<br>`www.assemblee-nationale.fr`<br>`senat.fr`<br>`ens.psl.eu`<br>`polytechnique.edu`<br>`univ-paris1.fr`<br>`strasbourg.eu`<br>`bordeaux.fr`<br>`univ-lyon1.fr` | `217.70.184.55`<br>`185.194.81.29`<br>`46.105.202.26`<br>`45.85.52.26`<br>`129.199.166.211`<br>`129.104.30.29`<br>`193.55.96.23`<br>`185.60.150.88`<br>`195.214.227.180`<br>`134.214.126.72` | フランス政府 公式ポータル<br>エリゼ宮（大統領府）<br>フランス国民議会（下院）<br>フランス上院<br>エコール・ノルマル・シュペリウール<br>エコール・ポリテクニーク<br>パリ第1大学（パンテオン・ソルボンヌ）<br>ストラスブール市役所<br>ボルドー市役所<br>リヨン第1大学 | **PASS (10/10)** |
+| **豪州 (AU)** | `anu.edu.au`<br>`unimelb.edu.au`<br>`uq.edu.au`<br>`monash.edu`<br>`vic.gov.au`<br>`tas.gov.au`<br>`aarnet.edu.au`<br>`telstra.com.au`<br>`qut.edu.au`<br>`deakin.edu.au` | `130.56.67.33`<br>`43.245.41.62`<br>`130.102.184.3`<br>`43.245.41.240`<br>`103.107.226.226`<br>`147.109.249.170`<br>`202.158.207.3`<br>`203.44.22.2`<br>`131.181.196.203`<br>`128.184.204.21` | オーストラリア国立大学（ANU）<br>メルボルン大学<br>クイーンズランド大学（UQ）<br>モナシュ大学<br>ビクトリア州政府<br>タスマニア州政府<br>オーストラリア学術研究網 AARNet<br>テルストラ（主要通信キャリア）<br>クイーンズランド工科大学（QUT）<br>ディーキン大学 | **PASS (10/10)** |
+| **カナダ (CA)** | `mcgill.ca`<br>`umontreal.ca`<br>`ucalgary.ca`<br>`uottawa.ca`<br>`westernu.ca`<br>`sfu.ca`<br>`uvic.ca`<br>`dal.ca`<br>`umanitoba.ca`<br>`yorku.ca` | `132.216.98.121`<br>`132.204.8.144`<br>`136.159.96.125`<br>`137.122.9.76`<br>`129.100.0.55`<br>`142.58.103.107`<br>`142.104.197.120`<br>`129.173.31.187`<br>`130.179.16.50`<br>`130.63.236.137` | マギル大学<br>モントリオール大学<br>カルガリー大学<br>オタワ大学<br>ウエスタン大学<br>サイモン・フレーザー大学<br>ビクトリア大学<br>ダルハウジー大学<br>マニトバ大学<br>ヨーク大学 | **PASS (10/10)** |
+| **イタリア (IT)** | `camera.it`<br>`unibo.it`<br>`unimi.it`<br>`unipd.it`<br>`www.unina.it`<br>`unifi.it`<br>`polimi.it`<br>`www.polito.it`<br>`garr.it`<br>`comune.torino.it` | `80.64.114.73`<br>`137.204.24.207`<br>`159.149.53.140`<br>`147.162.235.155`<br>`143.225.161.30`<br>`150.217.3.39`<br>`131.175.187.72`<br>`130.192.182.100`<br>`193.206.158.22`<br>`84.240.178.132` | イタリア代議員（下院）<br>ボローニャ大学<br>ミラノ大学<br>パドヴァ大学<br>ナポリ・フェデリコ2世大学<br>フィレンツェ大学<br>ミラノ工科大学<br>トリノ工科大学<br>イタリア学術研究網 GARR<br>トリノ市役所 | **PASS (10/10)** |
+| **スペイン (ES)** | `lamoncloa.gob.es`<br>`congreso.es`<br>`ub.edu`<br>`ucm.es`<br>`uab.cat`<br>`uam.es`<br>`upm.es`<br>`www.uv.es`<br>`upv.es`<br>`rediris.es` | `212.128.109.1`<br>`193.145.227.245`<br>`161.116.109.141`<br>`147.96.2.159`<br>`158.109.121.133`<br>`150.244.214.237`<br>`138.100.200.6`<br>`147.156.200.249`<br>`158.42.4.23`<br>`130.206.13.20` | スペイン首相官邸（ラ・モンクロア）<br>スペイン下院議会<br>バルセロナ大学<br>マドリード・コンプルテンセ大学<br>バルセロナ自治大学<br>マドリード自治大学<br>マドリード工科大学<br>バレンシア大学<br>バレンシア工科大学<br>スペイン学術研究網 RedIRIS | **PASS (10/10)** |
 
-### 2) 대륙별 작은 나라 10개국 (30개 사이트/IP)
+### 2) 各大陸の小規模国家10カ国（30件）
 
-| 대륙 | 국가 (코드) | 사이트 / 기관 (도메인) | 대상 IPv4 | 사이트 성격 / 설명 | 검증 결과 |
+| 地域 | 国名（コード） | 代表サイト・機関（ドメイン） | 対象 IPv4 | サイト概要・説明 | 検証結果 |
 |:---:|:---:|---|---|---|:---:|
-| **유럽** | **모나코 (MC)** | `gouv.mc`<br>`monaco-telecom.mc`<br>`mairie.mc` | `82.113.11.58`<br>`195.78.23.147`<br>`80.94.99.164` | 모나코 정부 공식 포털<br>모나코 텔레콤 국영망<br>모나코 시청 | **PASS (3/3)** |
-| **유럽** | **리히텐슈타인 (LI)** | `regierung.li`<br>`landtag.li`<br>`uni.li` | `91.207.130.57`<br>`91.207.130.57`<br>`193.5.27.37` | 리히텐슈타인 공국 정부<br>리히텐슈타인 연방의회<br>리히텐슈타인 대학교 | **PASS (3/3)** |
-| **유럽** | **아이슬란드 (IS)** | `hi.is`<br>`vedur.is`<br>`postur.is` | `130.208.165.58`<br>`94.142.156.174`<br>`82.221.64.147` | 아이슬란드 국립대학교<br>아이슬란드 기상청 포털<br>아이슬란드 국립우정청 | **PASS (3/3)** |
-| **아시아** | **브루나이 (BN)** | `gov.bn`<br>`mof.gov.bn`<br>`ubd.edu.bn` | `103.4.188.110`<br>`103.4.188.86`<br>`202.160.1.115` | 브루나이 정부 공식 포털<br>브루나이 재무부<br>브루나이 다루살람 대학교 | **PASS (3/3)** |
-| **아시아** | **부탄 (BT)** | `gov.bt`<br>`moh.gov.bt`<br>`tashicell.com` | `103.78.116.169`<br>`103.252.84.250`<br>`118.103.136.91` | 부탄 왕국 정부 포털<br>부탄 보건부<br>부탄 타시셀 이동통신 | **PASS (3/3)** |
-| **아시아** | **몰디브 (MV)** | `gov.mv`<br>`dhiraagu-telecom`<br>`ooredoo-maldives` | `123.176.25.10`<br>`27.114.128.1`<br>`43.226.220.1` | 몰디브 정부 공식 포털<br>몰디브 디라구 국영통신 망<br>몰디브 오레두 모바일 망 | **PASS (3/3)** |
-| **아프리카** | **세이셸 (SC)** | `www.gov.sc`<br>`seychelles.travel`<br>`intelvision.sc` | `196.13.208.87`<br>`41.86.57.50`<br>`41.220.110.236` | 세이셸 공화국 정부<br>세이셸 국립관광청 포털<br>세이셸 인텔비전 통신망 | **PASS (3/3)** |
-| **아프리카** | **모리셔스 (MU)** | `govmu.org`<br>`myt.mu`<br>`uom.ac.mu` | `196.13.125.126`<br>`196.20.130.50`<br>`202.60.7.10` | 모리셔스 정부 포털<br>모리셔스 마이티 텔레콤<br>모리셔스 대학교 | **PASS (3/3)** |
-| **아메리카** | **벨리즈 (BZ)** | `belizetourismboard.org`<br>`btl-telemedia`<br>`centralbank.org.bz` | `186.65.88.123`<br>`200.32.192.1`<br>`200.32.208.1` | 벨리즈 국립관광청<br>벨리즈 국영텔레미디어 BTL 망<br>벨리즈 중앙은행 전산망 | **PASS (3/3)** |
-| **오세아니아** | **피지 (FJ)** | `www.fiji.gov.fj`<br>`usp.ac.fj`<br>`vodafone.com.fj` | `124.108.30.90`<br>`144.120.198.5`<br>`27.123.183.54` | 피지 정부 공식 포털<br>남태평양 대학교 (피지 본교)<br>보다폰 피지 통신망 | **PASS (3/3)** |
+| **欧州** | **モナコ (MC)** | `gouv.mc`<br>`monaco-telecom.mc`<br>`mairie.mc` | `82.113.11.58`<br>`195.78.23.147`<br>`80.94.99.164` | モナコ政府 公式ポータル<br>モナコ・テレコム<br>モナコ市役所 | **PASS (3/3)** |
+| **欧州** | **リヒテンシュタイン (LI)** | `regierung.li`<br>`landtag.li`<br>`uni.li` | `91.207.130.57`<br>`91.207.130.57`<br>`193.5.27.37` | リヒテンシュタイン公国政府<br>リヒテンシュタイン連邦議会<br>リヒテンシュタイン大学 | **PASS (3/3)** |
+| **欧州** | **アイスランド (IS)** | `hi.is`<br>`vedur.is`<br>`postur.is` | `130.208.165.58`<br>`94.142.156.174`<br>`82.221.64.147` | アイスランド大学<br>アイスランド気象庁<br>アイスランド郵便 | **PASS (3/3)** |
+| **アジア** | **ブルネイ (BN)** | `gov.bn`<br>`mof.gov.bn`<br>`ubd.edu.bn` | `103.4.188.110`<br>`103.4.188.86`<br>`202.160.1.115` | ブルネイ政府 公式ポータル<br>ブルネイ財務省<br>ブルネイ・ダルサラーム大学 | **PASS (3/3)** |
+| **アジア** | **ブータン (BT)** | `gov.bt`<br>`moh.gov.bt`<br>`tashicell.com` | `103.78.116.169`<br>`103.252.84.250`<br>`118.103.136.91` | ブータン王国政府 ポータル<br>ブータン保健省<br>タシセル（主要携帯キャリア） | **PASS (3/3)** |
+| **アジア** | **モルディブ (MV)** | `gov.mv`<br>`dhiraagu-telecom`<br>`ooredoo-maldives` | `123.176.25.10`<br>`27.114.128.1`<br>`43.226.220.1` | モルディブ政府 公式ポータル<br>ディラアグ（国営通信）<br>オレドゥー・モルディブ | **PASS (3/3)** |
+| **アフリカ** | **セーシェル (SC)** | `www.gov.sc`<br>`seychelles.travel`<br>`intelvision.sc` | `196.13.208.87`<br>`41.86.57.50`<br>`41.220.110.236` | セーシェル共和国政府<br>セーシェル観光局 ポータル<br>インテルビジョン（通信網） | **PASS (3/3)** |
+| **アフリカ** | **モーリシャス (MU)** | `govmu.org`<br>`myt.mu`<br>`uom.ac.mu` | `196.13.125.126`<br>`196.20.130.50`<br>`202.60.7.10` | モーリシャス政府 ポータル<br>マイ・ティー（主要通信）<br>モーリシャス大学 | **PASS (3/3)** |
+| **アメリカ** | **ベリーズ (BZ)** | `belizetourismboard.org`<br>`btl-telemedia`<br>`centralbank.org.bz` | `186.65.88.123`<br>`200.32.192.1`<br>`200.32.208.1` | ベリーズ観光局<br>ベリーズ国営テレメディア<br>ベリーズ中央銀行 | **PASS (3/3)** |
+| **大洋州** | **フィジー (FJ)** | `www.fiji.gov.fj`<br>`usp.ac.fj`<br>`vodafone.com.fj` | `124.108.30.90`<br>`144.120.198.5`<br>`27.123.183.54` | フィジー政府 公式ポータル<br>南太平洋大学（フィジー本校）<br>ボーダフォン・フィジー | **PASS (3/3)** |
 
-### 3) 종합 검증 요약
-- **총 검증 대상:** 130개 IP (OECD 10개국 100건 + 소국 10개국 30건)
-- **성공률:** **130건 중 130건 성공 (100.0%)**
-- **평균 조회 레이턴시:** **30 ~ 50µs** (0.00003 ~ 0.00005초)
+### 3) 総合検証サマリー
+- **総検証件数：** 130件（OECD 10カ国 100件 ＋ 小規模国家 10カ国 30件）
+- **成功率：** **130件中 130件 成功（100.0%）**
+- **平均検索レイテンシ：** **30 ～ 50µs**（0.00003 ～ 0.00005秒）
 
 ---
 
-## 10. 데이터 출처
+## 10. データ出典
 
-- **데이터 출처:** [KRNIC 한국인터넷정보센터 (KISA)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/jsp/statboard/IPAS/ovrse/natal/IPaddrBandCurrentDownload.jsp)
+- **データ出典：** [KRNIC 韓国インターネット情報センター (KISA)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/jsp/statboard/IPAS/ovrse/natal/IPaddrBandCurrentDownload.jsp)
