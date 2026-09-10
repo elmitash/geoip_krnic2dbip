@@ -2,8 +2,8 @@ name: Update and Release GeoIP Binary Databases
 
 on:
   schedule:
-    # 매주 월요일 00:00 UTC (09:00 KST) 실행
-    - cron: '0 0 * * 1'
+    # 매일 19:23 UTC (04:23 KST/JST) 실행
+    - cron: '23 19 * * *'
   workflow_dispatch: # GitHub 웹 UI에서 수동 실행
 
 permissions:

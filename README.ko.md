@@ -4,7 +4,7 @@
 
 KRNIC(한국인터넷정보센터)의 국가별 IPv4 할당 현황 데이터를 초고속 조회가 가능한 **고정 10바이트 바이너리 포맷(`.dat`)** 및 DB-IP 호환 포맷으로 변환하고 자동 배포하는 Go 언어 기반 도구입니다.
 
-GitHub Actions를 통해 매주 최신 KRNIC 데이터를 자동으로 다운로드하여 빌드하고, 무결성 검증을 거친 후 GitHub Release Assets(`global.dat`, `jp.dat`, `kr.dat`, `cn.dat`, `dbip-country-lite.csv`, `checksum.sha256`)로 자동 배포됩니다.
+GitHub Actions를 통해 매일 최신 KRNIC 데이터를 자동으로 다운로드하여 빌드하고, 무결성 검증을 거친 후 GitHub Release Assets(`global.dat`, `jp.dat`, `kr.dat`, `cn.dat`, `dbip-country-lite.csv`, `checksum.sha256`)로 자동 배포됩니다.
 
 ---
 
@@ -16,7 +16,7 @@ GitHub Actions를 통해 매주 최신 KRNIC 데이터를 자동으로 다운로
 - **동적 복수 국가 필터링:** 파라미터(`-country JP,KR,CN`)로 지정한 국가 코드들을 단 1회 순회로 동적 분기하여 개별 `.dat` 파일로 각각 추출합니다.
 - **기존 쉘 스크립트 및 xtables 완벽 호환:** 인자 없이 실행 시 레거시 모드로 동작하여 `dbip-country-lite.csv`를 즉시 생성합니다.
 - **자체 검증(Verification) 모드:** CLI 자체에 이진 탐색 엔진을 내장하여 생성된 바이너리의 IP 조회를 즉시 검증할 수 있습니다.
-- **완전 자동화 파이프라인:** 매주 월요일 00:00 UTC에 GitHub Actions가 최신 데이터를 수집하여 릴리즈를 갱신합니다.
+- **완전 자동화 파이프라인:** 매일 오전 04:23 KST(19:23 UTC)에 GitHub Actions가 최신 데이터를 수집하여 릴리즈를 갱신합니다.
 
 ---
 
