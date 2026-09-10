@@ -180,5 +180,5 @@ sha256sum -c checksum.sha256
 
 ## 7. 데이터 출처
 
-- **데이터 출처:** [KRNIC 한국인터넷정보센터 (KISA)](https://xn--3e0bx5euxnjje69i70af08bea817g.xn--3e0b707e/jsp/statboard/IPAS/ovrse/natal/IPaddrBandCurrentDownload.jsp)
+- **데이터 출처:** KRNIC 한국인터넷정보센터 (KISA)
 
