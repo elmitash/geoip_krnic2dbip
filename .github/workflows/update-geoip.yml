@@ -71,7 +71,7 @@ jobs:
           echo "release_date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
 
       - name: Create or Update Latest Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: "Latest GeoIP Databases (${{ steps.release_info.outputs.release_date }})"
